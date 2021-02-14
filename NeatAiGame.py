@@ -1,32 +1,21 @@
 "# NeatAiGame"
 # needs : pipe and ground fol collision , bird to fly
 
-import neat
-import time
 import os
 import random
+
+import neat
 import pygame
+import Settings
+
 pygame.font.init()
 
-WIN_WIDTH = 550
-WIN_HEIGHT = 650
+GEN = 0
 
-BIRD_IMGS = [pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "bird1.png"))),
-             pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "bird2.png"))),
-             pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "bird3.png")))]
-PIPE_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "pipe.png")))
-BASE_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "base.png")))
-BG_IMG = pygame.transform.scale2x(pygame.image.load(os.path.join("imgs", "bg.png")))
-
-PIPE_DIST=700
-
-
-STAT_FONT = pygame.font.SysFont("comicsans", 50)
-END_FONT = pygame.font.SysFont("comicsans", 70)
 
 # Model the bird class
 class Bird:
-    IMGS = BIRD_IMGS
+    IMGS = Settings.BIRD_IMGS
     MAX_ROTATION = 25
     ROT_VEL = 20
     ANIMATION_TIME = 5
@@ -67,18 +56,11 @@ class Bird:
 
     def draw(self, win):
         self.img_count += 1
-        # todo modiffy this cycle that animates the bird
-        if self.img_count <= self.ANIMATION_TIME:
-            self.img = self.IMGS[0]
-        elif self.img_count <= self.ANIMATION_TIME * 2:
-            self.img = self.IMGS[1]
-        elif self.img_count <= self.ANIMATION_TIME * 3:
-            self.img = self.IMGS[2]
-        elif self.img_count <= self.ANIMATION_TIME * 4:
-            self.img = self.IMGS[1]
-        elif self.img_count == self.ANIMATION_TIME * 4 + 1:
-            self.img = self.IMGS[0]
-            self.img_count = 0
+
+        if self.img_count == self.ANIMATION_TIME * 4 + 1:
+            self.img_count = 1
+
+        self.img = self.IMGS[(self.img_count - 1) // 5]
 
         if self.tilt <= -80:
             self.img = self.IMGS[1]
@@ -91,7 +73,7 @@ class Bird:
 
 
 class Pipe:
-    GAP = 200
+    GAP = Settings.GAPGL
     VEL = 5
 
     def __init__(self, x):
@@ -100,8 +82,8 @@ class Pipe:
 
         self.top = 0
         self.bottom = 0
-        self.PIPE_TOP = pygame.transform.flip(PIPE_IMG, False, True)
-        self.PIPE_BOTTOM = PIPE_IMG
+        self.PIPE_TOP = pygame.transform.flip(Settings.PIPE_IMG, False, True)
+        self.PIPE_BOTTOM = Settings.PIPE_IMG
 
         self.passed = False
         self.set_height()
@@ -137,8 +119,8 @@ class Pipe:
 
 class Base:
     VEL = 5
-    WIDTH = BASE_IMG.get_width()
-    IMG = BASE_IMG
+    WIDTH = Settings.BASE_IMG.get_width()
+    IMG = Settings.BASE_IMG
 
     def __init__(self, y):
         self.y = y
@@ -162,38 +144,58 @@ class Base:
 
 
 def blitRotateCenter(surf, image, topleft, angle):
-    """
-    Rotate a surface and blit it to the window
-    :param surf: the surface to blit to
-    :param image: the image surface to rotate
-    :param topLeft: the top left position of the image
-    :param angle: a float value for angle
-    :return: None
-    """
     rotated_image = pygame.transform.rotate(image, angle)
     new_rect = rotated_image.get_rect(center=image.get_rect(topleft=topleft).center)
 
     surf.blit(rotated_image, new_rect.topleft)
 
 
-def draw_window(win, bird, pipes, base,score):
-    win.blit(BG_IMG, (0, 0))
+def draw_window(win, birds, pipes, base, score, gen, human):
+    win.blit(Settings.BG_IMG, (0, 0))
+
     for pipe in pipes:
         pipe.draw(win)
 
-    score_label = STAT_FONT.render("Score: " + str(score), 1, (255, 255, 255))
-    win.blit(score_label, (WIN_WIDTH - score_label.get_width() - 15, 10))
+    score_label = Settings.STAT_FONT.render("Score: " + str(score), 1, (255, 255, 255))
+    win.blit(score_label, (Settings.WIN_WIDTH - score_label.get_width() - 15, 10))
+
+    gen = Settings.STAT_FONT.render("Gen: " + str(gen), 1, (255, 255, 255))
+    win.blit(gen, (10, 10))
+
+    aliveBirds = Settings.STAT_FONT.render("Birds Alive: " + str(len(birds)), 1, (255, 255, 255))
+    win.blit(aliveBirds, (10, 40))
+
+    if human:
+        endMessage = Settings.STAT_FONT.render("Final Score : " + str(score), 1, (255, 255, 255))
+        win.blit(endMessage, (300, 300))
+        endMessage2 = Settings.STAT_FONT.render("Press Space to Play Again", 1, (255, 255, 255))
+        win.blit(endMessage2, (50, 400))
+
     base.draw(win)
 
-    bird.draw(win)
+    for bird in birds:
+        bird.draw(win)
     pygame.display.update()
 
 
-def main():
-    bird = Bird(230, 350)
+def evalGenome(genomes, config):
+    nets = []
+    ge = []
+    birds = []
+
+    global GEN
+    GEN += 1
+
+    for _, g in genomes:
+        net = neat.nn.FeedForwardNetwork.create(g, config)
+        nets.append(net)
+        birds.append(Bird(230, 350))
+        g.fitness = 0
+        ge.append(g)
+
     base = Base(550)
-    pipes = [Pipe(PIPE_DIST)]
-    win = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
+    pipes = [Pipe(Settings.PIPE_DIST)]
+    win = pygame.display.set_mode((Settings.WIN_WIDTH, Settings.WIN_HEIGHT))
 
     # set the framerate
     clock = pygame.time.Clock()
@@ -203,39 +205,191 @@ def main():
     while run:
         add_pipe = False
         clock.tick(30)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+                pygame.quit()
+                quit()
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    # bird.jump()
+                    pass
+
+        pipe_ind = 0
+        if len(birds) > 0:
+            if len(pipes) > 1 and birds[0].x > pipes[0].x + pipes[0].PIPE_TOP.get_width():
+                pipe_ind = 1
+        else:
+            run = False
+            break
+
+        for x, bird in enumerate(birds):
+            bird.move()
+            ge[x].fitness += 0.1
+
+            output = nets[x].activate(
+                (bird.y, abs(bird.y - pipes[pipe_ind].height), abs(bird.y - pipes[pipe_ind].bottom)))
+
+            if output[0] > 0.5:
+                bird.jump()
+
+        # bird.move()
+        remove = []
+        for pipe in pipes:
+
+            for x, bird in enumerate(birds):
+                if pipe.collide(bird):
+                    ge[x].fitness -= 1
+                    birds.pop(x)
+                    nets.pop(x)
+                    ge.pop(x)
+
+                if not pipe.passed and pipe.x < bird.x:
+                    pipe.passed = True
+                    add_pipe = True
+
+            if pipe.x + pipe.PIPE_TOP.get_width() < 0:
+                remove.append(pipe)
+
+            pipe.move()
+        if add_pipe:
+            score += 1
+            for g in ge:
+                g.fitness += 5
+
+            pipes.append(Pipe(Settings.PIPE_DIST))
+
+        for rem in remove:
+            pipes.remove(rem)
+
+        for x, bird in enumerate(birds):
+            if bird.y + bird.img.get_height() >= 550 or bird.y < 0:
+                birds.pop(x)
+                nets.pop(x)
+                ge.pop(x)
+
+        base.move()
+        draw_window(win, birds, pipes, base, score, GEN, False)
+
+        if score > 50:
+            break
+
+
+def run(config_file):
+    config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                                neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                                config_file)
+
+    p = neat.Population(config)
+
+    p.add_reporter(neat.StdOutReporter(True))
+    stats = neat.StatisticsReporter()
+    p.add_reporter(stats)
+
+    winner = p.run(evalGenome, 50)
+
+    print('\nBest genome:\n{!s}'.format(winner))
+
+
+def human():
+    bird = Bird(230, 350)
+    base = Base(550)
+    pipes = [Pipe(Settings.PIPE_DIST)]
+    win = pygame.display.set_mode((Settings.WIN_WIDTH, Settings.WIN_HEIGHT))
+
+    # set the framerate
+    clock = pygame.time.Clock()
+    score = 0
+
+    humanPl = False
+    run = True
+    decision = True
+
+    while run:
+        add_pipe = False
+        clock.tick(30)
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    pass
-                    # bird.jump()
+                    bird.jump()
 
-        # bird.move()
+        bird.move()
         remove = []
+
         for pipe in pipes:
             pipe.move()
             if pipe.collide(bird):
-                pass
+                humanPl = True
+                run = False
+
             if pipe.x + pipe.PIPE_TOP.get_width() < 0:
                 remove.append(pipe)
             if not pipe.passed and pipe.x < bird.x:
                 pipe.passed = True
                 add_pipe = True
-        if add_pipe :
+        if add_pipe:
             score += 1
-            pipes.append(Pipe(PIPE_DIST))
+            pipes.append(Pipe(Settings.PIPE_DIST))
 
-
-        for rem in remove :
+        for rem in remove:
             pipes.remove(rem)
 
-        if bird.y + bird.img.get_height() >= 550 :
-            pass
+        if bird.y + bird.img.get_height() >= 550 or bird.y < 0:
+            humanPl = True
+            run = False
 
         base.move()
-        draw_window(win, bird, pipes, base,score)
-    pygame.quit()
+
+        draw_window(win, [bird], pipes, base, score, 0, humanPl)
+    else:
+        while decision:
+            draw_window(win, [bird], pipes, base, score, 0, humanPl)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    decision = False
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        decision = False
+                        human()
 
 
-main()
+
+
+def draw_Initwindow(win):
+    win.blit(Settings.BG_IMG, (0, 0))
+
+    HumanChoice = Settings.STAT_FONT.render("Press 1 to play the game : ", 1, (255, 255, 255))
+    win.blit(HumanChoice, (10, 300))
+
+    HumanChoice = Settings.STAT_FONT.render("Press 2 to train the Ai : ", 1, (255, 255, 255))
+    win.blit(HumanChoice, (10, Settings.WIN_HEIGHT / 2 + 30))
+
+    pygame.display.update()
+
+
+if __name__ == '__main__':
+    win = pygame.display.set_mode((Settings.WIN_WIDTH, Settings.WIN_HEIGHT))
+    runGame = True
+
+    while runGame:
+        draw_Initwindow(win)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                runGame = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    runGame = False
+                    human()
+
+                if event.key == pygame.K_2:
+                    runGame = False
+                    local_dir = os.path.dirname(__file__)
+                    config_path = os.path.join(local_dir, "configuration_file")
+                    run(config_path)
+
+
